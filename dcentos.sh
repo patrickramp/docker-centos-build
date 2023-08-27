@@ -1,36 +1,36 @@
 #!/bin/bash
-
+clear
 echo "** Important Please Read! **"
-echo "This script is designed to provision a secure Docker host on a CentOS ONLY."
-echo "Please make sure you are using a fresh, fully updated version of CentOS as root."
-read -pr "Do you wish to proceed? [y/N]:" proceed
-if [[ "$proceed" =~ ^([yY][eE][sS]|[yY])$ ]]
+echo "This script is designed to provision a secure Docker host on CentOS-9 ONLY."
+echo "Please make sure you are using a fresh, fully updated version of CentOS and longed in as root."
+read -r -p "Do you wish to proceed? [y/N]: " start
+if [[ "$start" =~ ^([yY][eE][sS]|[yY])$ ]]
 then
   echo "Proceeding"
 else
-  echo "Exiting"
+  echo "Exiting script, goodbye."
   exit 1
 fi
 
 # Set hostname.
-read -pr "Please enter desired hostname: " hostname
+read -r -p "Please enter desired hostname: " hostname
 hostnamectl set-hostname "$hostname"
 
 # Set system timezone.
-read -pr "Please enter desired timezone: " timezone
+read -r -p "Please enter desired timezone: " timezone
 timedatectl set-timezone "$timezone"
 
 #Add user account, add user to wheel group.
-read -pr "Please enter desired admin username: " username
+read -r -p "Please enter desired admin username: " username
 adduser "$username"
 passwd "$username"
 usermod -aG wheel "$username"
 
 # Create swapfile.
-read -pr "Do you wish to create a swapfile? [y/N]: " swapyn
+read -r -p "Do you wish to create a swapfile? [y/N]: " swapyn
 if [[ "$swapyn" =~ ^([yY][eE][sS]|[yY])$ ]]
 then
-  read -pr "How many GB do you wish to use for the swapfile? " swapsize
+  read -r -p "How many GB do you wish to use for the swapfile? " swapsize
   fallocate -l "$swapsize"G /swapfile
   chmod 600 /swapfile
   mkswap /swapfile
@@ -49,7 +49,7 @@ echo "Review swap, swappiness and cache_pressure settings. These are pre-set to 
 swapon --show
 cat /proc/sys/vm/swappiness
 cat /proc/sys/vm/vfs_cache_pressure
-read -pr "Press any key to continue"
+read -r -p "Press any key to continue"
 
 # Install EPEL repo on CentOS and update.
 echo "Installing EPEL repo on CentOS and updating."
@@ -61,7 +61,7 @@ dnf install policycoreutils-python-utils fail2ban firewalld fail2ban-firewalld n
 
 # Update ssh port to something other than 22.
 echo "Update ssh port to something other than 22, between 1024 and 65535."
-read -pr "Enter desired ssh port: " sshport
+read -r -p "Enter desired ssh port: " sshport
 
 # Update ssh port in sshd_config file and restart sshd_config.
 echo "Port $sshport" >> /etc/ssh/sshd_config.d/sshport.conf
@@ -94,7 +94,7 @@ echo "Adding Docker Repositories and updating."
 dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
 dnf update
 
-# Install Docker and Docker Compose pkgs
+# Install Docker and Docker Compose packages.
 echo "Installing Docker and Docker Compose packages."
 echo "Docker GPG Key 060A 61C5 1B55 8A7F 742B 77AA C52F EB6B 621E 9F35"
 dnf install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
@@ -105,7 +105,7 @@ systemctl start docker
 systemctl enable docker
 
 # Enable automatic updates.
-read -pr "Do you wish to enable automatic updates? [y/N]: " autoyn
+read -r -p "Do you wish to enable automatic updates? [y/N]: " autoyn
 if [[ "$autoyn" =~ ^([yY][eE][sS]|[yY])$ ]]
 then
 # Add DNF automatic updates

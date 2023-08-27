@@ -1,7 +1,7 @@
 
-# CentOS-9 Docker Server Config
+# CentOS-9 Stream Docker Server Config Outline
 
-## This script is designed to provision a secure Docker host on a CentOS ONLY.
+## This is an outline of the intended functionality of the script.
  
 - Set hostname.
 - Set system timezone.
@@ -43,6 +43,10 @@ chmod -R 700 ~/.ssh
 sudo cp -p /etc/ssh/sshd_config /etc/ssh/sshd_config.orig
 sudo nano /etc/ssh/sshd_config
 ## See Config file ##
+
+# Some user land sruff not done as root.
+
+# Create a sshd config file 
 
  '''
  

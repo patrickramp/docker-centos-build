@@ -1,4 +1,4 @@
-# Docker Host HREL9 Build
+# Docker Host RHEL9 Build
 
 Work in progress bash script to provision a lightweight, reasonably secure Docker Host on RHEL9 based systems.
 

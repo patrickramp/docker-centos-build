@@ -1,308 +1,198 @@
 #!/bin/bash
 
-# Splash warning and disclaimer text.
+# Print colored messages
+print_message() {
+    local color="$1"
+    local message="$2"
+    echo -e "\e[${color}m${message}\e[0m"
+}
+print_success() { print_message 32 "[Success] $1"; }
+print_action() { print_message 33 "[Action] $1"; }
+
+# Splash warning and disclaimer text
 clear
 echo "** Important Please Read! **"
 echo "This script is intended for use on a RHEL 9 based distro."
 echo "It will install fail2ban and optionally docker, dnf-automatic."
 echo "Please make sure you are using a fresh install and logged in as root."
 read -r -p "Do you wish to proceed? [y/N]: " start
-if [[ "$start" =~ ^([yY][eE][sS]|[yY])$ ]] 
-then
-  echo "Proceeding..."
-  sleep 1
-else
-  echo "Exiting script, goodbye."
-  exit 1
-fi
+[[ "$start" =~ ^([yY][eE][sS]|[yY])$ ]] || { echo "Exiting script, goodbye."; exit 1; }
 
-# Function to print colored success messages.
-print_success() {
-    local message=$1
-    echo -e "\e[32m$message\e[0m"
-}
-# Function to print colored action messages.
-print_action() {
-    local command=$1
-    echo -e "\e[33m$command\e[0m"
-}
-
-# Enforce strong password policy
-print_action "Enforcing strong password policy."
-echo "password requisite pam_pwquality.so retry=3 minlen=12 difok=3" >> /etc/pam.d/common-password
-print_success "[Success]"
-
-# Add user account, add user to wheel group.
-read -r -p "Please enter desired admin username: " username
-
-# Check if user already exists
-if id "$username" >/dev/null 2>&1; 
-then
-  echo "User $username already exists."
-else
-  sudo useradd -m -k /empty_skel "$username"
-fi
-
-# Add user to wheel group.
-usermod -aG wheel "$username"
-print_success "[Success] User $username created/exists and added to wheel group."
-
-# Set password for user account.
-passwd "$username"
-
-# Verify passwd command succeeded.
-if [ $? -eq 0 ]; 
-then
-  print_success "[Success] Password set for $username."
-else
-  print_success "[Failed] to set password for $username."
-  exit 1
-fi
-
-# Move root authorized_keys to new user.
-read -r -p "Move root authorized_keys to new user? [y/N]: " swapyn
-if [[ "$swapyn" =~ ^([yY][eE][sS]|[yY])$ ]] 
-then
-print_action "Moving root SSH keys to new user."
-mkdir -p /home/$username/.ssh
-mv /root/.ssh/authorized_keys /home/$username/.ssh/authorized_keys
-chown -R $username:$username /home/$username/.ssh
-chmod 700 /home/$username/.ssh
-chmod 600 /home/$username/.ssh/authorized_keys
-print_success "[Success]"
-fi
-
-# Set hostname.
+# Set hostname
 read -r -p "Please enter desired hostname: " hostname
 hostnamectl set-hostname "$hostname"
-print_success "[Success] Hostname set to $hostname."
+print_success "Hostname set to $hostname."
 
-# Set system timezone.
+# Set system timezone
 read -r -p "Please enter desired timezone [America/New_York]: " timezone
-# Set default timezone if none is entered
-if [ -z "$timezone" ]; 
-then
-  timezone="America/New_York"
-fi
+timezone=${timezone:-America/New_York}
 timedatectl set-timezone "$timezone"
-print_success "[Success] Timezone set to $timezone."
+print_success "Timezone set to $timezone."
 
-# Disable unused services.
-print_action "Disabling unused services."
-systemctl disable avahi-daemon
-systemctl disable cups
-print_success "[Success]"
+# Add user account and set password
+read -r -p "Please enter desired admin username: " username
+id "$username" &>/dev/null || sudo useradd -m -k /empty_skel "$username"
+usermod -aG wheel "$username"
+print_success "User $username created/exists and added to wheel group."
+passwd "$username" && print_success "Password set for $username." || { print_message 31 "[Failed] to set password for $username."; exit 1; }
 
-# Secure shared memory.
-print_action "Securing shared memory."
-echo 'tmpfs     /run/shm     tmpfs     defaults,noexec,nosuid     0     0' >> /etc/fstab
-print_success "[Success]"
-
-# Create swapfile.
-read -r -p "Create a swapfile? [y/N]: " swapyn
-if [[ "$swapyn" =~ ^([yY][eE][sS]|[yY])$ ]] 
-then
-  read -r -p "How many GB do you wish to use for the swapfile? " swapsize
-  fallocate -l "${swapsize}G" /swapfile
-  chmod 600 /swapfile
-  mkswap /swapfile
-  swapon /swapfile
-  # Backup and update fstab for swap persistence.
-  cp -p /etc/fstab /etc/fstab.orig
-  echo '/swapfile   swap    swap    sw  0 0' >> /etc/fstab
+# Move root authorized_keys to new user
+read -r -p "Move root authorized_keys to new user? [y/N]: " swapyn
+if [[ "$swapyn" =~ ^([yY][eE][sS]|[yY])$ ]]; then
+    print_action "Moving root SSH keys to new user."
+    mkdir -p /home/$username/.ssh
+    mv /root/.ssh/authorized_keys /home/$username/.ssh/
+    chown -R $username:$username /home/$username/.ssh
+    chmod 700 /home/$username/.ssh
+    chmod 600 /home/$username/.ssh/authorized_keys
+    print_success "SSH keys moved."
 fi
 
-# Set swappiness and cache pressure to optimize RAM usage.
+# Secure shared memory
+print_action "Securing shared memory."
+echo 'tmpfs   /run/shm   tmpfs   defaults,noexec,nosuid   0 0' >> /etc/fstab
+print_success "Shared memory secured."
+
+# Disable unused network and printer services
+print_action "Disabling unused network and printer services."
+systemctl disable avahi-daemon cups
+print_success "Unused services disabled."
+
+# Create swapfile
+read -r -p "Create a swapfile? [y/N]: " swapyn
+if [[ "$swapyn" =~ ^([yY][eE][sS]|[yY])$ ]]; then
+    read -r -p "How many GB do you wish to use for the swapfile? " swapsize
+    fallocate -l "${swapsize}G" /swapfile
+    chmod 600 /swapfile
+    mkswap /swapfile
+    swapon /swapfile
+    echo '/swapfile   swap    swap    sw   0 0' >> /etc/fstab
+    print_success "Swapfile created."
+fi
+
+# Optimize RAM usage
 print_action "Optimizing swappiness and cache pressure."
 echo 'vm.swappiness = 10' >> /etc/sysctl.conf
 echo 'vm.vfs_cache_pressure = 50' >> /etc/sysctl.conf
-print_success "[Success]"
-
-# Verify swap, swappiness and cache pressure settings.
-echo "Review swap, swappiness, and cache_pressure settings. These are pre-set to optimize RAM usage but can be changed later in /etc/sysctl.conf"
+print_success "Swappiness and cache pressure optimized."
 swapon --show
 sudo sysctl -p
-read -r -p "Press any key to continue"
 
-# Install EPEL repo on CentOS and update.
-print_action "Installing EPEL repo on CentOS and updating."
-dnf install epel-release -y 
-dnf update -y
-print_success "[Success]"
+# Install EPEL repo and update
+print_action "Installing EPEL repo and updating."
+dnf install epel-release -y && dnf update -y
+print_success "EPEL repo installed and system updated."
 
-# Install security-utils, firewalld, and fail2ban.
+# Install security-utils, firewalld, and fail2ban
 print_action "Installing security-utils, fail2ban, and firewalld."
 dnf install policycoreutils-python-utils fail2ban firewalld fail2ban-firewalld -y
-systemctl start firewalld
-systemctl enable firewalld
-systemctl start fail2ban
-systemctl enable fail2ban
-print_success "[Success]"
+systemctl enable --now firewalld fail2ban
+firewall-cmd --version
+fail2ban-client --version
+print_success "Security packages installed."
 
-# Enable auditd for enhanced logging
-print_action "Enabling auditd for enhanced logging."
-dnf install audit -y
-systemctl start auditd
-systemctl enable auditd
-print_success "[Success]"
-
-# Update SSH port.
-echo "Select desired SSH port number, between 1024 and 65535."
-read -r -p "Port= " sshport
-
-# Update SSH port in sshd_config.d file and restart sshd_config.
-print_action "Updating SSH port and authentication methods in sshd_config. /etc/ssh/sshd_config.d/ssh.conf"
+# Update SSH port
+read -r -p "Select desired SSH port number (1024-65535): " sshport
+print_action "Updating SSH port and authentication methods."
 cat << EOF > /etc/ssh/sshd_config.d/ssh.conf
-
 # Custom SSH Configuration for $hostname
 Protocol 2
 Port $sshport 
-
 PermitRootLogin no
 PasswordAuthentication no
-
 MaxAuthTries 3 
 MaxSessions 5
 LoginGraceTime 30
-
 AllowTcpForwarding no
 AllowAgentForwarding no
 X11Forwarding no
-
 EOF
-
-print_success "[Success] Restarting sshd."
+print_success "SSH configuration updated."
 systemctl restart sshd
 
-# Add and Update SELinux ssh port.
-print_action "Updating SSH port in SELinux."
-semanage port -a -t ssh_port_t -p tcp "$sshport"
-semanage port -m -t ssh_port_t -p tcp "$sshport"
-print_success "[Success]"
-
-# Add new ssh port to firewalld enable http/s service to firewalld, reload and enable.
-print_action "Updating ports on Firewalld."
-echo "Remove default SSH port 22."
+# Update SELinux and Firewalld
+print_action "Updating SELinux and Firewalld for SSH port."
+semanage port -a -t ssh_port_t -p tcp "$sshport" || semanage port -m -t ssh_port_t -p tcp "$sshport"
 firewall-cmd --permanent --zone=public --remove-service=ssh
-echo "Enable SSH on port $sshport."
 firewall-cmd --permanent --zone=public --add-port="$sshport"/tcp
-echo "Enable http on port 80."
-firewall-cmd --permanent --zone=public --add-service=http
-echo "Enable https on port 443."
-firewall-cmd --permanent --zone=public --add-service=https
-echo "Reload and enable firewalld."
+firewall-cmd --permanent --zone=public --add-service={http,https}
 firewall-cmd --reload
-print_success "[Success]"
+print_success "SELinux and Firewalld updated."
 
-# Configure Fail2ban.
-print_action "Configuring Fail2ban custom SSH rules /etc/fail2ban/jail.d/sshd.local"
-# Copy default jail.config to jail.local.
-cp /etc/fail2ban/jail.conf /etc/fail2ban/jail.local
-
-# Add sshd config to fail2ban/jail.d/sshd.local.
+# Configure Fail2ban
+print_action "Configuring Fail2ban."
 cat << EOF > /etc/fail2ban/jail.d/sshd.local
-
 [sshd]
 enabled = true
 port = $sshport
 maxretry = 5
 bantime = 24h
 findtime = 24h
-
 banaction = firewallcmd-rich-rules[actiontype=<muliport>]
 banaction_allports = firewallcmd-rich-rules[actiontype=<allport>]
-
 EOF
-
-# Restart Fail2ban
 systemctl restart fail2ban
-print_success "[Success]"
+print_success "Fail2ban configured."
 
-# Install Docker.
+# Install Docker
 read -r -p "Install Docker? [y/N]: " swapyn
-if [[ "$swapyn" =~ ^([yY][eE][sS]|[yY])$ ]] 
-then
-  # Uninstall old versions of docker podman and buildah to avoid repo conflicts.
-  print_action "Uninstalling old versions of docker podman and buildah to avoid repo conflicts."
-  dnf remove docker docker-client docker-client-latest docker-common docker-latest docker-latest-logrotate docker-logrotate docker-engine podman buildah runc -y
-  print_success "[Success]"
+if [[ "$swapyn" =~ ^([yY][eE][sS]|[yY])$ ]]; then
+    print_action "Uninstalling old Docker versions."
+    dnf remove docker{,-client,-client-latest,-common,-latest,-latest-logrotate,-logrotate,-engine} podman buildah runc -y
+    print_success "Old Docker versions uninstalled."
 
-  # Add Docker repositories and update.
-  print_action "Adding Docker Repositories and updating."
-  dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
-  dnf update
-  print_success "[Success]"
+    print_action "Adding Docker repository and updating."
+    dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+    dnf update
+    print_success "Docker repository added."
 
-  # Install Docker and Docker Compose packages.
-  print_action "Installing Docker and Docker Compose packages."
-  print_action "Verify Docker GPG Key 060A 61C5 1B55 8A7F 742B 77AA C52F EB6B 621E 9F35"
-  dnf install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin 
-  print_success "[Success]"
+    print_action "Installing Docker and Docker Compose."
+    print_action "Docker GPG Key 060A 61C5 1B55 8A7F 742B 77AA C52F EB6B 621E 9F35"
+    dnf install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin -y
+    print_success "Docker installed."
 
-  # Start Docker and set to start at reboot
-  print_action "Starting Docker and setting to start at boot."
-  systemctl start docker
-  systemctl enable docker
-  print_success "[Success]"
-
-  # Configure Docker daemon for security
-  print_action "Configuring Docker daemon for security."
-  mkdir -p /etc/docker
-  cat << EOF > /etc/docker/daemon.json
+    print_action "Configuring Docker daemon security."
+    mkdir -p /etc/docker
+    cat << EOF > /etc/docker/daemon.json
 {
   "icc": false,
   "userns-remap": "default",
   "no-new-privileges": true
 }
 EOF
-  systemctl restart docker
-  print_success "[Success] Docker daemon configured for security."
+    systemctl enable --now docker
+    print_success "Docker configured and started."
 fi
 
-# Enable automatic updates.
+# Enable automatic updates
 read -r -p "Install and enable automatic updates? [y/N]: " autoyn
-if [[ "$autoyn" =~ ^([yY][eE][sS]|[yY])$ ]] 
-then
-  # Install DNF automatic updates
-  dnf install dnf-automatic -y
+if [[ "$autoyn" =~ ^([yY][eE][sS]|[yY])$ ]]; then
+    dnf install dnf-automatic -y
+    print_action "Configuring automatic updates."
+    read -r -p "Configure automatic updates? [y/N]: " autoyn
+    [[ "$autoyn" =~ ^([yY][eE][sS]|[yY])$ ]] && nano /etc/dnf/automatic.conf
 
-  # Configure updates
-  read -r -p "Configure automatic updates? [y/N]: " autoyn
-  if [[ "$autoyn" =~ ^([yY][eE][sS]|[yY])$ ]] 
-  then
-    systemctl edit dnf-automatic
-
-    # Configure automatic updates timer
     read -r -p "Change automatic updates timer? [06:00 daily] [y/N]: " autoyn
-    if [[ "$autoyn" =~ ^([yY][eE][sS]|[yY])$ ]] 
-    then
-      systemctl edit dnf-automatic.timer
+    if [[ "$autoyn" =~ ^([yY][eE][sS]|[yY])$ ]]; then
+        cp /usr/lib/systemd/system/dnf-automatic.timer /etc/systemd/system/
+        nano /etc/systemd/system/dnf-automatic.timer
     fi
-  fi
 
-  # Turn on update automatic service.
-  systemctl start dnf-automatic
-  systemctl enable dnf-automatic.timer
-  print_success "[Success] automatic updates enabled."
+    systemctl daemon-reload
+    systemctl enable --now dnf-automatic.timer
+    print_success "Automatic updates enabled."
 fi
 
-# Install additional packages.
+# Install additional packages
 read -r -p "Install additional packages [y/N]: " swapyn
-if [[ "$swapyn" =~ ^([yY][eE][sS]|[yY])$ ]] 
-then
-  read -r -p "List packages to install? [tmux nvim btop]: " install 
-  if [ -z "$install" ];
-  then
+if [[ "$swapyn" =~ ^([yY][eE][sS]|[yY])$ ]]; then
+    read -r -p "List packages to install? [tmux neovim btop]: " packages
+    packages=${packages:-tmux neovim btop}
     print_action "Installing additional packages."
-    dnf install tmux nvim btop -y
-    print_success "[Success] additional packages installed."
-  else
-    dnf install $install -y
-  fi
+    dnf install $packages -y
+    print_success "Additional packages installed."
 fi
 
 # Parting remarks.
 print_action "All done! Don't forget to reboot into your new user and disable root login. # sudo passwd -l root"
-read -r -p "Press any key to exit."
 exit 0
-

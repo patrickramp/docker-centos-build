@@ -1,54 +1,35 @@
 
-# CentOS-9 Stream Docker Server Config Outline
+# RHEL9 Docker Server Config Outline
 
-## This is an outline of the intended functionality of the script.
+## This is an outline of the script fucntions.
  
 - Set hostname.
 - Set system timezone.
-- Add admin user to wheel group.
+- Create admin user in wheel group.
+- Set secure admin password.
+- Move root SSH authorized_keys file to new admin user home dir.
+- Secure shared memory.
+- Disable unused network services.
 - Create swapfile.
-  - Backup and update fstab for swap persistence.
 - Set swappiness and cache pressure to optimize ram usage.
 - Verify swap, swappiness and cache pressure settings.
 - Install EPEL repo on CentOS and update.
 - Install security applications and utilities.
-- Update ssh port to something other than 22.
-  - Update ssh port in sshd_config file and restart sshd.
+- Update SSH port.
+  - Update SSH port and authentication method in ssh.conf.
   - Add and Update SELinux ssh port.
-  - Add new ssh port to firewalld enable http/s service to firewalld, reload and enable.
-  - Add firewalld to fail2ban banaction.
-    - Fail2ban config for ssh.
- - Uninstall old versions of docker podman and buildah to avoid repo confilicts.
- - Add Docker repositories and update.
- - Install Docker and Docker Compose pkgs
- - Start Docker and set to start at reboot
- - Enable automatic updates.
- - Add DNF automatic updates
-   - Configure updates
-   - Turn on update automatic service.
- - Parting remarks.
-
-
-"Still need configuration to figure out how to." 
-
-```bash
-# Import SSH Keys to user home dir.
-./.ssh/authorized_keys
->> $SSH_keys.pub
-
-# Set user permissions for ~/.ssh directory 'R'ecursively
-chmod -R 700 ~/.ssh
-
-# Backup and configure SSH config /etc/ssh/sshd_config
-sudo cp -p /etc/ssh/sshd_config /etc/ssh/sshd_config.orig
-sudo nano /etc/ssh/sshd_config
-## See Config file ##
-
-# Some user land sruff not done as root.
-
-# Create a sshd config file 
-
- '''
- 
- 
+  - Add update SSH port and enable http/s services in firewalld, reload.
+- Create Fail2ban jail for ssh and link to firewalld.
+- Install Docker and Docker Compose
+  - Uninstall old versions of docker podman and buildah to avoid repo confilicts.
+  - Add Docker repositories and update.
+  - Install Docker and Docker Compose pkgs
+  - Configure Docker daemon security.
+  - Start Docker and set to start at reboot
+- Enable automatic updates.
+  - Add DNF automatic updates
+  - Configure update preferences
+  - Configure update timer service.
+- Install optional utilities.
+- Parting remarks.
  

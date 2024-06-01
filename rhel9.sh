@@ -27,6 +27,11 @@ print_action() {
     echo -e "\e[33m$command\e[0m"
 }
 
+# Enforce strong password policy
+print_action "Enforcing strong password policy."
+echo "password requisite pam_pwquality.so retry=3 minlen=12 difok=3" >> /etc/pam.d/common-password
+print_success "[Success]"
+
 # Add user account, add user to wheel group.
 read -r -p "Please enter desired admin username: " username
 
@@ -50,7 +55,7 @@ if [ $? -eq 0 ];
 then
   print_success "[Success] Password set for $username."
 else
-  print_success "[Faild] to set password for $username."
+  print_success "[Failed] to set password for $username."
   exit 1
 fi
 
@@ -82,12 +87,23 @@ fi
 timedatectl set-timezone "$timezone"
 print_success "[Success] Timezone set to $timezone."
 
+# Disable unused services.
+print_action "Disabling unused services."
+systemctl disable avahi-daemon
+systemctl disable cups
+print_success "[Success]"
+
+# Secure shared memory.
+print_action "Securing shared memory."
+echo 'tmpfs     /run/shm     tmpfs     defaults,noexec,nosuid     0     0' >> /etc/fstab
+print_success "[Success]"
+
 # Create swapfile.
 read -r -p "Create a swapfile? [y/N]: " swapyn
 if [[ "$swapyn" =~ ^([yY][eE][sS]|[yY])$ ]] 
 then
   read -r -p "How many GB do you wish to use for the swapfile? " swapsize
-  fallocate -l "$swapsize"G /swapfile
+  fallocate -l "${swapsize}G" /swapfile
   chmod 600 /swapfile
   mkswap /swapfile
   swapon /swapfile
@@ -96,14 +112,14 @@ then
   echo '/swapfile   swap    swap    sw  0 0' >> /etc/fstab
 fi
 
+# Set swappiness and cache pressure to optimize RAM usage.
 print_action "Optimizing swappiness and cache pressure."
-# Set swappiness and cache pressure to optimize ram usage.
 echo 'vm.swappiness = 10' >> /etc/sysctl.conf
 echo 'vm.vfs_cache_pressure = 50' >> /etc/sysctl.conf
 print_success "[Success]"
 
 # Verify swap, swappiness and cache pressure settings.
-echo "Review swap, swappiness, and cache_pressure settings. These are pre-set to optimize ram usage but can be changed later in /etc/sysctl.conf"
+echo "Review swap, swappiness, and cache_pressure settings. These are pre-set to optimize RAM usage but can be changed later in /etc/sysctl.conf"
 swapon --show
 sudo sysctl -p
 read -r -p "Press any key to continue"
@@ -121,10 +137,13 @@ systemctl start firewalld
 systemctl enable firewalld
 systemctl start fail2ban
 systemctl enable fail2ban
-echo "Firewalld version"
-firewall-cmd --version
-echo "Fail2ban version"
-fail2ban-client --version
+print_success "[Success]"
+
+# Enable auditd for enhanced logging
+print_action "Enabling auditd for enhanced logging."
+dnf install audit -y
+systemctl start auditd
+systemctl enable auditd
 print_success "[Success]"
 
 # Update SSH port.
@@ -165,11 +184,11 @@ print_success "[Success]"
 print_action "Updating ports on Firewalld."
 echo "Remove default SSH port 22."
 firewall-cmd --permanent --zone=public --remove-service=ssh
-echo "Enabe SSH on port $sshport."
+echo "Enable SSH on port $sshport."
 firewall-cmd --permanent --zone=public --add-port="$sshport"/tcp
-echo "Enabe http on port 80."
+echo "Enable http on port 80."
 firewall-cmd --permanent --zone=public --add-service=http
-echo "Enabe https on port 442."
+echo "Enable https on port 443."
 firewall-cmd --permanent --zone=public --add-service=https
 echo "Reload and enable firewalld."
 firewall-cmd --reload
@@ -203,8 +222,8 @@ print_success "[Success]"
 read -r -p "Install Docker? [y/N]: " swapyn
 if [[ "$swapyn" =~ ^([yY][eE][sS]|[yY])$ ]] 
 then
-  # Uninstall old versions of docker podman and buildah to avoid repo confilicts.
-  print_action "Uninstalling old versions of docker podman and buildah to avoid repo confilicts."
+  # Uninstall old versions of docker podman and buildah to avoid repo conflicts.
+  print_action "Uninstalling old versions of docker podman and buildah to avoid repo conflicts."
   dnf remove docker docker-client docker-client-latest docker-common docker-latest docker-latest-logrotate docker-logrotate docker-engine podman buildah runc -y
   print_success "[Success]"
 
@@ -225,6 +244,19 @@ then
   systemctl start docker
   systemctl enable docker
   print_success "[Success]"
+
+  # Configure Docker daemon for security
+  print_action "Configuring Docker daemon for security."
+  mkdir -p /etc/docker
+  cat << EOF > /etc/docker/daemon.json
+{
+  "icc": false,
+  "userns-remap": "default",
+  "no-new-privileges": true
+}
+EOF
+  systemctl restart docker
+  print_success "[Success] Docker daemon configured for security."
 fi
 
 # Enable automatic updates.
@@ -270,7 +302,7 @@ then
 fi
 
 # Parting remarks.
-print_action "All done! Dont forget to reboot into your new user and disable root login. # sudo passwd -l root"
+print_action "All done! Don't forget to reboot into your new user and disable root login. # sudo passwd -l root"
 read -r -p "Press any key to exit."
 exit 0
 

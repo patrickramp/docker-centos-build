@@ -82,8 +82,7 @@ echo 'vm.vfs_cache_pressure = 50' >> /etc/sysctl.conf
 print_success "Swappiness and cache pressure optimized."
 swapon --show
 sudo sysctl -p
-echo "Review swap settings. Press any key to continue."
-read -r
+read -r "Review swap settings. Press any key to continue."
 fi
 
 # Install EPEL repo and update
@@ -117,11 +116,12 @@ AllowAgentForwarding no
 X11Forwarding no
 EOF
 print_success "SSH configuration updated."
+systemctl restart sshd
 
 # Update SELinux and Firewalld
 print_action "Updating SELinux and Firewalld for SSH port."
 semanage port -a -t ssh_port_t -p tcp "$sshport" || semanage port -m -t ssh_port_t -p tcp "$sshport"
-firewall-cmd --zone=public --remove-service={ssh,cockpit,dhcpv6-client} --permanent
+firewall-cmd --zone=public --remove-service=ssh --permanent
 firewall-cmd --zone=public --add-port="$sshport"/tcp --permanent
 firewall-cmd --zone=public --add-service={http,https} --permanent
 firewall-cmd --reload
@@ -139,12 +139,8 @@ findtime = 24h
 banaction = firewallcmd-rich-rules[actiontype=<muliport>]
 banaction_allports = firewallcmd-rich-rules[actiontype=<allport>]
 EOF
-print_success "Fail2ban configured."
-
-print_action "Restarting SSH and Fail2ban daemon."
-systemctl restart sshd
 systemctl restart fail2ban
-print_success "SSH and Fail2ban daemon restarted."
+print_success "Fail2ban configured."
 
 # Install Docker
 read -r -p "Install Docker? [y/N]: " swapyn
@@ -213,8 +209,8 @@ fi
 # Install additional packages
 read -r -p "Install additional packages [y/N]: " swapyn
 if [[ "$swapyn" =~ ^([yY][eE][sS]|[yY])$ ]]; then
-    read -r -p "List packages to install? [tmux btop]: " packages
-    packages=${packages:-tmux btop}
+    read -r -p "List packages to install? [tmux neovim btop]: " packages
+    packages=${packages:-tmux neovim btop}
     print_action "Installing additional packages."
     dnf install $packages -y
     print_success "Additional packages installed."
